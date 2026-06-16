@@ -219,6 +219,15 @@ function guessLeaderboard(){
   });
   return map;
 }
+// distinct player nicknames given to a wine (memory-aid labels)
+function wineNicknames(wine){
+  const seen=new Set(), out=[];
+  SCORES.filter(s=>s.wine===wine && s.nickname && s.nickname.trim()).forEach(s=>{
+    const v=s.nickname.trim(), k=v.toLowerCase();
+    if(!seen.has(k)){seen.add(k);out.push(v);}
+  });
+  return out;
+}
 function tasterName(n){
   const sub=SUBS.find(s=>s.taster===n);
   return (sub&&sub.taster_name)?sub.taster_name:('Taster '+n);
@@ -242,6 +251,7 @@ async function saveScore(taster,wine,patch){
     overall:patch.overall!==undefined?patch.overall:(existing.overall??null),
     notes:patch.notes!==undefined?patch.notes:(existing.notes??''),
     guess:patch.guess!==undefined?patch.guess:(existing.guess??''),
+    nickname:patch.nickname!==undefined?patch.nickname:(existing.nickname??''),
     updated_at:new Date().toISOString()};
   const {data,error}=await sb.from('wt_scores').upsert(row,{onConflict:'taster,wine'}).select().maybeSingle();
   if(error){console.error(error);toast('Save failed — check connection');return;}
@@ -461,7 +471,9 @@ function renderScoreStep(n){
   wineList().forEach(w=>{
     const r=ms.find(s=>s.wine===w)||{};
     cards+=`<div class="card winecard">
-      <h3><span class="winebadge">${w}</span> Wine ${w}</h3>
+      <h3><span class="winebadge">${w}</span> Wine ${w} <span class="muted" id="nh${w}" style="font-size:15px">${r.nickname?'— &ldquo;'+esc(r.nickname)+'&rdquo;':''}</span></h3>
+      <label class="fld">Your nickname for this bottle — just so you remember it</label>
+      <input type="text" id="nick${w}" value="${esc(r.nickname||'')}" placeholder="e.g. The Smelly One" onchange="nickChange(${w},this.value)">
       <label class="fld">Pairing — how well it paired (1–10)</label>
       ${segHTML('pairing',w,r.pairing??null)}
       <label class="fld">Overall — how good is it (1–10)</label>
@@ -491,6 +503,7 @@ async function pick(wine,kind,val,btn){
 let noteTimer={};
 function noteChange(w,v){ saveScore(window._taster,w,{notes:v}).then(flashSaved); }
 function guessChange(w,v){ saveScore(window._taster,w,{guess:v}).then(flashSaved); }
+function nickChange(w,v){ const h=$('nh'+w); if(h)h.innerHTML=v.trim()?'— &ldquo;'+esc(v.trim())+'&rdquo;':''; saveScore(window._taster,w,{nickname:v}).then(flashSaved); }
 function flashSaved(){const e=$('saveind');if(e){e.textContent='✓ saved';clearTimeout(e._t);e._t=setTimeout(()=>e.textContent=' ',1200);}}
 
 function renderRankStep(n){
@@ -501,7 +514,8 @@ function renderRankStep(n){
     const r=ms.find(s=>s.wine===w)||{};
     const wt=weighted(r.pairing,r.overall);
     const sc=wt==null?'—':wt.toFixed(1);
-    items+=`<li data-wine="${w}"><span class="pos">${i+1}</span><span class="nm"><b>Wine ${w}</b> <span class="muted">your score ${sc}</span></span><span class="handle">&#9776;</span></li>`;
+    const nk=r.nickname?` &ldquo;${esc(r.nickname)}&rdquo;`:'';
+    items+=`<li data-wine="${w}"><span class="pos">${i+1}</span><span class="nm"><b>Wine ${w}</b>${nk} <span class="muted">your score ${sc}</span></span><span class="handle">&#9776;</span></li>`;
   });
   app.innerHTML=`
     ${navTabs('home')}
@@ -547,13 +561,6 @@ function renderHost(isRefresh){
   const sy=window.scrollY;
   const done=SUBS.filter(s=>s.submitted).length;
   const gl=guessLeaderboard();
-  // nickname inputs
-  let nickInputs='';
-  wineList().forEach(w=>{
-    nickInputs+=`<div style="display:flex;gap:8px;align-items:center;margin:5px 0">
-      <span class="winebadge" style="min-width:34px;height:34px;font-size:18px">${w}</span>
-      <input type="text" id="nick${w}" value="${esc(EVENT.wine_nicknames?.[w]||'')}" placeholder="e.g. The Velvet Bomb" style="flex:1"></div>`;
-  });
   const _wl=wineList(), _rng=_wl.length?`bags ${_wl[0]}–${_wl[_wl.length-1]}`:'';
   // guesses section
   let guessSec='';
@@ -612,10 +619,7 @@ function renderHost(isRefresh){
         <input type="text" id="hStart" inputmode="numeric" value="${EVENT.wine_start||1}" style="flex:1">
         <button class="btn" style="width:auto;margin-top:0" id="saveNum">Set</button>
       </div>
-      <p class="muted" style="margin-top:6px">Guests will score wines labeled <b>${_rng}</b> to match your bags. This controls what shows when they scan — the printed QR codes never change.</p>
-      <label class="fld">Wine nicknames <span style="text-transform:none">— shown next to each wine in the results</span></label>
-      ${nickInputs}
-      <button class="btn gold" id="saveNicks">Save nicknames</button>
+      <p class="muted" style="margin-top:6px">Guests will score wines labeled <b>${_rng}</b> to match your bags. This controls what shows when they scan — the printed QR codes never change. Players add their own nicknames while tasting.</p>
     </div>
     <h3>Live scores <span class="muted">(weighted, auto-refresh)</span></h3>
     <div class="card" style="overflow-x:auto"><table class="grid">${head}${body}</table></div>
@@ -633,7 +637,6 @@ function renderHost(isRefresh){
   const hb=$('hideBtn'); if(hb) hb.onclick=async()=>{await setEvent({released:false});toast('Results hidden');await loadAll();renderHost();};
   const rsb=$('resetBtn'); if(rsb) rsb.onclick=()=>confirmModal('Clear all results?','This permanently deletes every taster\'s scores, notes, guesses and submitted rankings, and hides the results. Guest names and links are kept. Use it to restart for a dry run or a new round.','Yes, clear everything',async()=>{await resetEvent();});
   const snb=$('saveNum'); if(snb) snb.onclick=async()=>{let n=parseInt($('hNum').value,10);if(isNaN(n)||n<1)n=1;if(n>30)n=30;let st=parseInt($('hStart').value,10);if(isNaN(st)||st<1)st=1;if(st>500)st=500;await setEvent({num_wines:n,wine_start:st});const wl=[];for(let i=0;i<n;i++)wl.push(st+i);toast('Bags '+wl[0]+'–'+wl[wl.length-1]);await loadAll();renderHost();};
-  const sk=$('saveNicks'); if(sk) sk.onclick=async()=>{const nn={};wineList().forEach(w=>{const v=$('nick'+w);if(v&&v.value.trim())nn[w]=v.value.trim();});await setEvent({wine_nicknames:nn});toast('Nicknames saved');};
   if(isRefresh) window.scrollTo(0,sy);
 }
 async function setGuess(t,w,val){
@@ -659,12 +662,13 @@ function renderResults(viewerTaster,isRefresh){
   let rows='';
   ranked.forEach((r,i)=>{
     const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`;
-    const nick=EVENT.wine_nicknames?.[r.wine];
+    const nicks=wineNicknames(r.wine);
     const real=EVENT.wine_names?.[r.wine];
     rows+=`<div class="resultrow ${i===0?'win':''}">
       <div class="rk">${medal}</div>
       <div class="meta">
-        <div style="font-size:19px;color:var(--burg)"><b>Wine ${r.wine}</b>${nick?` — &ldquo;${esc(nick)}&rdquo;`:''}${real?` <span class="muted">(${esc(real)})</span>`:''}</div>
+        <div style="font-size:19px;color:var(--burg)"><b>Wine ${r.wine}</b>${nicks.length?` — &ldquo;${esc(nicks[0])}&rdquo;`:''}${real?` <span class="muted">(${esc(real)})</span>`:''}</div>
+        ${nicks.length>1?`<div class="muted" style="font-size:13px">also called: ${nicks.slice(1).map(esc).join(' · ')}</div>`:''}
         <div class="muted">avg overall ${r.avgOverall?r.avgOverall.toFixed(1):'—'} · avg pairing ${r.avgPair?r.avgPair.toFixed(1):'—'} · weighted ${r.avgWeighted?r.avgWeighted.toFixed(1):'—'}</div>
       </div>
       <div class="score" style="text-align:center;min-width:54px">${r.borda}<div style="font-size:10px;letter-spacing:1px;color:var(--muted)">POINTS</div></div>
@@ -677,7 +681,7 @@ function renderResults(viewerTaster,isRefresh){
     ${navTabs('home', isHost?`<button onclick="location.hash='view=host'">Host</button>`:'')}
     <h2>Results</h2>
     <div class="banner">Points: each taster's 1st pick earns ${EVENT.num_wines}, down to 1 for last place — summed across all tasters. ${voters} ranking${voters===1?'':'s'} counted.</div>
-    ${winner?`<div class="card center" style="border-color:var(--gold)"><div class="big-ico">🏆</div><h3 style="margin:0">Winner: Wine ${winner.wine}${EVENT.wine_nicknames?.[winner.wine]?' — &ldquo;'+esc(EVENT.wine_nicknames[winner.wine])+'&rdquo;':''}</h3>${EVENT.wine_names?.[winner.wine]?`<div class="muted">${esc(EVENT.wine_names[winner.wine])}</div>`:''}<div class="muted">${winner.borda} points</div></div>`:''}
+    ${winner?(()=>{const wn=wineNicknames(winner.wine);return `<div class="card center" style="border-color:var(--gold)"><div class="big-ico">🏆</div><h3 style="margin:0">Winner: Wine ${winner.wine}${wn.length?' — &ldquo;'+esc(wn[0])+'&rdquo;':''}</h3>${EVENT.wine_names?.[winner.wine]?`<div class="muted">${esc(EVENT.wine_names[winner.wine])}</div>`:''}<div class="muted">${winner.borda} points</div></div>`;})():''}
     ${rows}
     <h3>Guessing champions</h3>
     <div class="card">${glH}</div>
@@ -686,7 +690,7 @@ function renderResults(viewerTaster,isRefresh){
 }
 
 // expose handlers used in inline HTML
-window.pick=pick;window.noteChange=noteChange;window.guessChange=guessChange;
+window.pick=pick;window.noteChange=noteChange;window.guessChange=guessChange;window.nickChange=nickChange;
 window.copyVal=copyVal;window.setGuess=setGuess;
 
 //// ---------- BOOT ----------
