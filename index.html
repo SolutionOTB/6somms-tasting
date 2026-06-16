@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#6B1F2E">
+<title>6 Somms — Blind Tasting</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<style>
+  :root{
+    --burg:#6B1F2E; --burg-deep:#4d1620; --gold:#C9A24B; --gold-soft:#e3cd96;
+    --cream:#fbf7ef; --ink:#2b2228; --muted:#8a7d72; --line:#e7ddca;
+    --good:#2e7d4f; --bad:#b23b3b; --card:#ffffff;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:Georgia,'Times New Roman',serif;background:var(--cream);color:var(--ink);
+    line-height:1.45;font-size:17px;
+  }
+  .wrap{max-width:560px;margin:0 auto;padding:0 16px 80px}
+  header.app{
+    background:linear-gradient(160deg,var(--burg),var(--burg-deep));color:#fff;
+    text-align:center;padding:18px 16px 14px;position:sticky;top:0;z-index:20;
+    box-shadow:0 2px 12px rgba(0,0,0,.15)
+  }
+  header.app .logo{font-size:46px;font-style:italic;line-height:1;position:relative;display:inline-block}
+  header.app .logo .dot{position:absolute;top:6px;right:-12px;width:9px;height:9px;border-radius:50%;background:var(--gold)}
+  header.app .name{letter-spacing:8px;font-size:18px;margin-top:2px}
+  header.app .sub{letter-spacing:4px;font-size:10px;color:var(--gold-soft);margin-top:3px;text-transform:uppercase}
+  header.app .role{font-size:12px;color:var(--gold-soft);margin-top:6px;letter-spacing:1px}
+  nav.tabs{display:flex;gap:6px;justify-content:center;margin:14px 0 6px;flex-wrap:wrap}
+  nav.tabs button{
+    font-family:inherit;font-size:13px;letter-spacing:1px;padding:8px 14px;border-radius:20px;
+    border:1px solid var(--line);background:#fff;color:var(--burg);cursor:pointer
+  }
+  nav.tabs button.active{background:var(--burg);color:#fff;border-color:var(--burg)}
+  h1,h2,h3{font-weight:normal}
+  h2{color:var(--burg);font-size:24px;margin:18px 0 6px}
+  h3{color:var(--burg);font-size:19px;margin:16px 0 4px}
+  .muted{color:var(--muted);font-size:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  .winecard h3{margin-top:0;display:flex;align-items:center;gap:8px}
+  .winebadge{background:var(--burg);color:#fff;border-radius:10px;min-width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;font-size:22px;font-style:italic}
+  label.fld{display:block;font-size:13px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;margin:14px 0 6px}
+  .seg{display:grid;grid-template-columns:repeat(10,1fr);gap:4px}
+  .seg button{font-family:inherit;font-size:15px;padding:9px 0;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;color:var(--ink)}
+  .seg button.sel{background:var(--gold);border-color:var(--gold);color:#3a2e10;font-weight:bold}
+  .seg.overall button.sel{background:var(--burg);border-color:var(--burg);color:#fff}
+  textarea,input[type=text]{width:100%;font-family:inherit;font-size:16px;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+  textarea{min-height:64px;resize:vertical}
+  button.btn{font-family:inherit;font-size:17px;letter-spacing:1px;background:var(--burg);color:#fff;border:none;border-radius:10px;padding:14px 18px;width:100%;cursor:pointer;margin-top:8px}
+  button.btn.gold{background:var(--gold);color:#3a2e10;font-weight:bold}
+  button.btn.ghost{background:#fff;color:var(--burg);border:1px solid var(--burg)}
+  button.btn:disabled{opacity:.5}
+  .saveind{font-size:12px;color:var(--good);height:14px;text-align:right;letter-spacing:.5px}
+  ul.rules{list-style:none;padding:0;margin:8px 0}
+  ul.rules li{position:relative;padding:8px 8px 8px 30px;border-bottom:1px dashed var(--line)}
+  ul.rules li:before{content:"\1F377";position:absolute;left:0;top:7px}
+  ol.ranklist{list-style:none;margin:10px 0;padding:0}
+  ol.ranklist li{
+    display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);
+    border-radius:10px;padding:12px;margin:8px 0;touch-action:none
+  }
+  ol.ranklist li .pos{background:var(--burg);color:#fff;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 auto}
+  ol.ranklist li .nm{flex:1}
+  ol.ranklist li .handle{color:var(--gold);font-size:22px;cursor:grab;padding:0 4px}
+  ol.ranklist li.sortable-ghost{opacity:.4}
+  ol.ranklist li.sortable-chosen{box-shadow:0 4px 14px rgba(0,0,0,.18);border-color:var(--gold)}
+  table.grid{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+  table.grid th,table.grid td{border:1px solid var(--line);padding:7px;text-align:center}
+  table.grid th{background:var(--burg);color:#fff;font-weight:normal;font-size:12px}
+  table.grid td.wn{background:#f6efe0;font-style:italic}
+  .pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:10px;background:#f0e8d6;color:var(--burg);letter-spacing:.5px}
+  .resultrow{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:12px;margin:8px 0;background:#fff}
+  .resultrow .rk{font-size:26px;width:40px;text-align:center}
+  .resultrow.win{border-color:var(--gold);background:linear-gradient(120deg,#fffaf0,#fff);box-shadow:0 2px 10px rgba(201,162,75,.25)}
+  .resultrow .meta{flex:1}
+  .resultrow .score{font-size:22px;color:var(--burg);font-style:italic}
+  .guessrow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:15px}
+  .guessrow .g{flex:1}
+  .chk{border:1px solid var(--line);background:#fff;border-radius:8px;width:38px;height:34px;font-size:16px;cursor:pointer}
+  .chk.on-good{background:var(--good);color:#fff;border-color:var(--good)}
+  .chk.on-bad{background:var(--bad);color:#fff;border-color:var(--bad)}
+  .note{background:#f9f4ea;border-left:3px solid var(--gold);padding:8px 10px;border-radius:6px;font-style:italic;margin:6px 0;font-size:14px}
+  .center{text-align:center}
+  .big-ico{font-size:54px;text-align:center;margin:10px 0}
+  .copybox{display:flex;gap:6px;align-items:center;margin:6px 0;font-size:13px}
+  .copybox input{flex:1;font-size:12px;padding:7px}
+  .copybox button{flex:0 0 auto;font-family:inherit;background:var(--burg);color:#fff;border:none;border-radius:8px;padding:8px 12px;cursor:pointer}
+  .banner{background:#f0e8d6;border:1px solid var(--gold-soft);border-radius:10px;padding:12px;text-align:center;color:var(--burg);margin:12px 0}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:24px;font-size:14px;opacity:0;transition:opacity .25s;z-index:50;pointer-events:none}
+  .toast.show{opacity:.95}
+  .overlay{position:fixed;inset:0;background:rgba(20,12,15,.6);display:none;align-items:center;justify-content:center;z-index:60;padding:20px}
+  .overlay.show{display:flex}
+  .modal{background:#fff;border-radius:16px;padding:22px;max-width:380px;width:100%;text-align:center}
+  .modal h3{margin-top:0}
+  .modal .row{display:flex;gap:10px;margin-top:16px}
+  .modal .row button{flex:1}
+  .foot{text-align:center;color:var(--muted);font-size:12px;margin-top:30px}
+</style>
+</head>
+<body>
+<header class="app">
+  <div class="logo">6<span class="dot"></span></div>
+  <div class="name">SOMMS</div>
+  <div class="sub" id="hdrSub">Six Sommeliers · Blind Tasting</div>
+  <div class="role" id="hdrRole"></div>
+</header>
+<div class="wrap" id="app"></div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+//// ---------- CONFIG ----------
+const SUPABASE_URL = 'https://pytbtuzeeguqgrhszmpr.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_Szeto_ZZUnpZipwMv1VE0A_wyo3RMQp';
+const NUM_TASTERS = 6;
+const W_PAIR = 0.4, W_OVERALL = 0.6;
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+//// ---------- STATE ----------
+let EVENT = {id:1,event_name:'Blind Wine Tasting',num_wines:6,released:false,wine_names:{}};
+let SCORES = [];        // wt_scores rows
+let SUBS = [];          // wt_submissions rows
+let pollTimer = null;
+
+//// ---------- HELPERS ----------
+const $ = (id)=>document.getElementById(id);
+const app = $('app');
+const esc = (s)=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1800);}
+function baseUrl(){return location.origin+location.pathname;}
+function hashParams(){const h=location.hash.replace(/^#/,'');const p={};h.split('&').forEach(kv=>{const[a,b]=kv.split('=');if(a)p[a]=decodeURIComponent(b||'');});return p;}
+
+function confirmModal(title,body,okLabel,onOk){
+  const m=$('modal');
+  m.innerHTML=`<h3>${esc(title)}</h3><p class="muted">${body}</p>
+    <div class="row"><button class="btn ghost" id="mNo">Cancel</button><button class="btn gold" id="mYes">${esc(okLabel)}</button></div>`;
+  $('overlay').classList.add('show');
+  $('mNo').onclick=()=>$('overlay').classList.remove('show');
+  $('mYes').onclick=()=>{$('overlay').classList.remove('show');onOk();};
+}
+
+//// ---------- SENTIMENT (notes nudge for suggested rank) ----------
+const POS=['love','loved','great','excellent','amazing','delicious','smooth','balanced','elegant','rich','complex','fantastic','best','beautiful','silky','vibrant','bright','superb','wonderful','favorite','outstanding','lush','refined','perfect','stunning','gorgeous','clean','fresh','expressive','harmonious','long finish','pairs well','pairs perfectly','great pairing'];
+const NEG=['bad','harsh','thin','flat','sour','bitter','off','unbalanced','watery','boring','weak','disappointing','astringent','hot','sharp','dull','metallic','vinegar','musty','overpowering','worst','too tannic','clashes','doesn\'t pair','bad pairing','not good','no finish','short finish'];
+function sentimentNudge(notes){
+  if(!notes) return 0;
+  const t=' '+notes.toLowerCase()+' ';
+  let s=0;
+  POS.forEach(w=>{if(t.includes(w))s++;});
+  NEG.forEach(w=>{if(t.includes(w))s--;});
+  s=Math.max(-3,Math.min(3,s));
+  return (s/3)*0.5; // up to +/-0.5 on a 10-pt scale
+}
+
+//// ---------- SCORING MATH ----------
+function weighted(p,o){
+  if(p==null && o==null) return null;
+  const pp=p==null?0:p, oo=o==null?0:o;
+  return W_PAIR*pp + W_OVERALL*oo;
+}
+// suggested order for one taster: array of wine numbers best->worst
+function suggestedOrder(tasterScores){
+  const wines=[];
+  for(let w=1;w<=EVENT.num_wines;w++){
+    const r=tasterScores.find(s=>s.wine===w);
+    const base=r?weighted(r.pairing,r.overall):null;
+    const nud=r?sentimentNudge(r.notes):0;
+    wines.push({wine:w, rated:base!=null, combined:(base==null?-1:base+nud)});
+  }
+  wines.sort((a,b)=> (b.rated-a.rated) || (b.combined-a.combined) || (a.wine-b.wine));
+  return wines.map(x=>x.wine);
+}
+// group results from submitted rankings (Borda) + weighted averages
+function groupResults(){
+  const N=EVENT.num_wines;
+  const res={};
+  for(let w=1;w<=N;w++) res[w]={wine:w,borda:0,ranksum:0,rankcount:0,wsum:0,wcount:0,psum:0,pcount:0,osum:0,ocount:0};
+  // weighted averages from all scores
+  SCORES.forEach(s=>{
+    const r=res[s.wine]; if(!r) return;
+    const wt=weighted(s.pairing,s.overall);
+    if(wt!=null){r.wsum+=wt;r.wcount++;}
+    if(s.pairing!=null){r.psum+=s.pairing;r.pcount++;}
+    if(s.overall!=null){r.osum+=s.overall;r.ocount++;}
+  });
+  // Borda from submitted rankings
+  const submitted=SUBS.filter(x=>x.submitted && Array.isArray(x.rank_order) && x.rank_order.length);
+  submitted.forEach(sub=>{
+    sub.rank_order.forEach((w,i)=>{
+      const r=res[w]; if(!r) return;
+      r.borda += (N - i);     // 1st place gets N points
+      r.ranksum += (i+1);
+      r.rankcount++;
+    });
+  });
+  const arr=Object.values(res).map(r=>({
+    wine:r.wine,
+    borda:r.borda,
+    avgRank:r.rankcount?r.ranksum/r.rankcount:null,
+    avgWeighted:r.wcount?r.wsum/r.wcount:null,
+    avgPair:r.pcount?r.psum/r.pcount:null,
+    avgOverall:r.ocount?r.osum/r.ocount:null
+  }));
+  arr.sort((a,b)=> (b.borda-a.borda) || ((b.avgWeighted||0)-(a.avgWeighted||0)) || (a.wine-b.wine));
+  return {ranked:arr, voters:submitted.length};
+}
+function guessLeaderboard(){
+  const map={};
+  SCORES.forEach(s=>{
+    if(s.guess_correct===true){map[s.taster]=(map[s.taster]||0)+1;}
+  });
+  return map;
+}
+function tasterName(n){
+  const sub=SUBS.find(s=>s.taster===n);
+  return (sub&&sub.taster_name)?sub.taster_name:('Taster '+n);
+}
+
+//// ---------- DATA ----------
+async function loadAll(){
+  const [ev,sc,su]=await Promise.all([
+    sb.from('wt_event').select('*').eq('id',1).maybeSingle(),
+    sb.from('wt_scores').select('*'),
+    sb.from('wt_submissions').select('*')
+  ]);
+  if(ev.data) EVENT=ev.data;
+  if(sc.data) SCORES=sc.data;
+  if(su.data) SUBS=su.data;
+}
+async function saveScore(taster,wine,patch){
+  const existing=SCORES.find(s=>s.taster===taster&&s.wine===wine)||{};
+  const row={taster,wine,
+    pairing:patch.pairing!==undefined?patch.pairing:(existing.pairing??null),
+    overall:patch.overall!==undefined?patch.overall:(existing.overall??null),
+    notes:patch.notes!==undefined?patch.notes:(existing.notes??''),
+    guess:patch.guess!==undefined?patch.guess:(existing.guess??''),
+    updated_at:new Date().toISOString()};
+  const {data,error}=await sb.from('wt_scores').upsert(row,{onConflict:'taster,wine'}).select().maybeSingle();
+  if(error){console.error(error);toast('Save failed — check connection');return;}
+  const idx=SCORES.findIndex(s=>s.taster===taster&&s.wine===wine);
+  if(idx>=0)SCORES[idx]=data;else SCORES.push(data);
+}
+async function saveSubmission(taster,patch){
+  const existing=SUBS.find(s=>s.taster===taster)||{};
+  const row={taster,
+    taster_name:patch.taster_name!==undefined?patch.taster_name:(existing.taster_name??''),
+    rank_order:patch.rank_order!==undefined?patch.rank_order:(existing.rank_order??[]),
+    submitted:patch.submitted!==undefined?patch.submitted:(existing.submitted??false),
+    updated_at:new Date().toISOString()};
+  const {data,error}=await sb.from('wt_submissions').upsert(row,{onConflict:'taster'}).select().maybeSingle();
+  if(error){console.error(error);toast('Save failed');return null;}
+  const idx=SUBS.findIndex(s=>s.taster===taster);
+  if(idx>=0)SUBS[idx]=data;else SUBS.push(data);
+  return data;
+}
+async function setEvent(patch){
+  const row={id:1,...patch,updated_at:new Date().toISOString()};
+  const {data,error}=await sb.from('wt_event').upsert(row,{onConflict:'id'}).select().maybeSingle();
+  if(error){console.error(error);toast('Save failed');return;}
+  EVENT=data;
+}
+async function markGuess(taster,wine,val){
+  const {data,error}=await sb.from('wt_scores').update({guess_correct:val}).eq('taster',taster).eq('wine',wine).select().maybeSingle();
+  if(error){toast('Update failed');return;}
+  if(data){const i=SCORES.findIndex(s=>s.taster===taster&&s.wine===wine);if(i>=0)SCORES[i]=data;}
+}
+
+//// ---------- ROUTER ----------
+function startPoll(fn,ms){stopPoll();pollTimer=setInterval(fn,ms);}
+function stopPoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
+
+async function route(){
+  stopPoll();
+  const p=hashParams();
+  await loadAll();
+  $('hdrSub').textContent = EVENT.event_name || 'Six Sommeliers · Blind Tasting';
+  if(p.view==='rules'){ $('hdrRole').textContent=''; renderRules('home'); return; }
+  if(p.view==='host'){ $('hdrRole').textContent='HOST CONTROL'; renderHost(); startPoll(async()=>{await loadAll();renderHost(true);},5000); return; }
+  if(p.view==='setup'){ $('hdrRole').textContent='HOST SETUP'; renderSetup(); return; }
+  if(p.view==='results'){ $('hdrRole').textContent=''; renderResults(null); startPoll(async()=>{await loadAll();renderResults(null,true);},6000); return; }
+  if(p.t){ const n=parseInt(p.t,10); if(n>=1&&n<=NUM_TASTERS){renderTaster(n);return;} }
+  renderHome();
+}
+window.addEventListener('hashchange',route);
+
+//// ---------- VIEWS ----------
+function navTabs(active,extra){
+  return `<nav class="tabs">
+    ${extra||''}
+    <button class="${active==='rules'?'active':''}" onclick="location.hash='view=rules'">Rules</button>
+  </nav>`;
+}
+
+function renderHome(){
+  $('hdrRole').textContent='';
+  let taster='';
+  for(let i=1;i<=NUM_TASTERS;i++) taster+=`<button class="btn ghost" onclick="location.hash='t=${i}'">I'm Taster ${i}</button>`;
+  app.innerHTML=`
+    ${navTabs('home')}
+    <div class="banner">${esc(EVENT.event_name)} · ${EVENT.num_wines} wines</div>
+    <div class="card center">
+      <div class="big-ico">&#127863;</div>
+      <h2>Welcome</h2>
+      <p class="muted">Pick your taster number to begin. Each guest uses their own link.</p>
+      ${taster}
+    </div>
+    <div class="card center">
+      <p class="muted">Running the event?</p>
+      <button class="btn" onclick="location.hash='view=host'">Host Control Panel</button>
+      <button class="btn ghost" onclick="location.hash='view=setup'">Event Setup</button>
+    </div>
+    <div class="foot">6 Somms · Blind Tasting</div>`;
+}
+
+function renderRules(back){
+  app.innerHTML=`
+    ${navTabs('rules')}
+    <h2>House Rules</h2>
+    <div class="card">
+      <ul class="rules">
+        <li>All bottles are bagged and numbered — taste blind, no peeking.</li>
+        <li>Score every wine on two things, each 1–10:
+            <b>Pairing</b> (how well it matched the food) and <b>Overall</b> (how good it is).</li>
+        <li>Your final score weights <b>Overall 60%</b> and <b>Pairing 40%</b>.</li>
+        <li>Jot tasting notes — they sharpen the app's suggested ranking for you.</li>
+        <li>Take a <b>guess</b> at each wine. The host checks who nailed it.</li>
+        <li>When done, review the suggested rank, <b>drag to reorder</b>, then submit.</li>
+        <li>Once you submit you're locked in — results appear when the host releases them.</li>
+        <li>Palate cleanse between pours. Sip, don't gulp. Have fun. &#127863;</li>
+      </ul>
+    </div>
+    <button class="btn ghost" onclick="history.length>1?history.back():location.hash=''">Back</button>`;
+}
+
+//// ----- SETUP -----
+function renderSetup(){
+  let nameInputs='';
+  for(let i=1;i<=EVENT.num_wines;i++){
+    nameInputs+=`<label class="fld">Wine ${i} (revealed at the end)</label>
+      <input type="text" id="wn${i}" value="${esc(EVENT.wine_names?.[i]||'')}" placeholder="e.g. 2019 Saxum James Berry">`;
+  }
+  app.innerHTML=`
+    ${navTabs('setup')}
+    <h2>Event Setup</h2>
+    <div class="card">
+      <label class="fld">Event name</label>
+      <input type="text" id="evName" value="${esc(EVENT.event_name)}">
+      <label class="fld">Number of wines</label>
+      <input type="text" id="evNum" inputmode="numeric" value="${EVENT.num_wines}">
+      <button class="btn gold" id="saveBasics">Save & refresh</button>
+    </div>
+    <div class="card">
+      <h3>Wine identities <span class="muted">(optional)</span></h3>
+      <p class="muted">Fill these in if you want the real wines revealed on the results screen. Leave blank to keep it mysterious.</p>
+      ${nameInputs}
+      <button class="btn" id="saveNames">Save wine names</button>
+    </div>
+    <div class="card">
+      <h3>Share the links</h3>
+      <p class="muted">Send each guest their own taster link. Keep the host link for yourself.</p>
+      ${linkRows()}
+    </div>
+    <button class="btn ghost" onclick="location.hash='view=host'">Go to Host Control &rarr;</button>`;
+  $('saveBasics').onclick=async()=>{
+    const nm=$('evName').value.trim()||'Blind Wine Tasting';
+    let n=parseInt($('evNum').value,10); if(isNaN(n)||n<1)n=1; if(n>30)n=30;
+    await setEvent({event_name:nm,num_wines:n});
+    toast('Saved'); renderSetup();
+  };
+  $('saveNames').onclick=async()=>{
+    const names={};
+    for(let i=1;i<=EVENT.num_wines;i++){const v=$('wn'+i).value.trim();if(v)names[i]=v;}
+    await setEvent({wine_names:names}); toast('Wine names saved');
+  };
+}
+function linkRows(){
+  let h='';
+  for(let i=1;i<=NUM_TASTERS;i++){
+    const u=baseUrl()+'#t='+i;
+    h+=`<div class="copybox"><span class="pill">T${i}</span><input type="text" readonly value="${u}"><button onclick="copyVal(this)">Copy</button></div>`;
+  }
+  const hostU=baseUrl()+'#view=host';
+  const resU=baseUrl()+'#view=results';
+  h+=`<div class="copybox"><span class="pill" style="background:var(--burg);color:#fff">HOST</span><input type="text" readonly value="${hostU}"><button onclick="copyVal(this)">Copy</button></div>`;
+  h+=`<div class="copybox"><span class="pill" style="background:var(--gold);color:#3a2e10">RESULTS</span><input type="text" readonly value="${resU}"><button onclick="copyVal(this)">Copy</button></div>`;
+  return h;
+}
+function copyVal(btn){
+  const inp=btn.previousElementSibling;
+  inp.select();inp.setSelectionRange(0,9999);
+  navigator.clipboard?.writeText(inp.value).then(()=>toast('Copied')).catch(()=>{document.execCommand('copy');toast('Copied');});
+}
+
+//// ----- TASTER -----
+function myScores(n){return SCORES.filter(s=>s.taster===n);}
+function mySub(n){return SUBS.find(s=>s.taster===n);}
+
+async function renderTaster(n){
+  $('hdrRole').textContent='TASTER '+n;
+  const sub=mySub(n);
+  // already submitted?
+  if(sub&&sub.submitted){
+    if(EVENT.released){ renderResults(n); return; }
+    renderWaiting(n); startPoll(async()=>{await loadAll();const s=mySub(n);if(EVENT.released){stopPoll();renderResults(n);}},6000);
+    return;
+  }
+  // need a name first?
+  if(!sub||!sub.taster_name){ renderNamePrompt(n); return; }
+  renderScoreStep(n);
+}
+
+function renderNamePrompt(n){
+  app.innerHTML=`
+    ${navTabs('home')}
+    <div class="card center">
+      <div class="big-ico">&#129346;</div>
+      <h2>Taster ${n}</h2>
+      <p class="muted">What should we call you on the leaderboard?</p>
+      <label class="fld">Your name</label>
+      <input type="text" id="nm" placeholder="e.g. Chris">
+      <button class="btn gold" id="go">Start tasting</button>
+    </div>`;
+  $('go').onclick=async()=>{
+    const v=$('nm').value.trim()||('Taster '+n);
+    await saveSubmission(n,{taster_name:v,submitted:false});
+    renderScoreStep(n);
+  };
+}
+
+const segHTML=(kind,wine,val)=>{
+  let b='';
+  for(let i=1;i<=10;i++) b+=`<button class="${val===i?'sel':''}" onclick="pick(${wine},'${kind}',${i},this)">${i}</button>`;
+  return `<div class="seg ${kind==='overall'?'overall':''}" data-wine="${wine}" data-kind="${kind}">${b}</div>`;
+};
+
+function renderScoreStep(n){
+  window._taster=n;
+  const ms=myScores(n);
+  let cards='';
+  for(let w=1;w<=EVENT.num_wines;w++){
+    const r=ms.find(s=>s.wine===w)||{};
+    cards+=`<div class="card winecard">
+      <h3><span class="winebadge">${w}</span> Wine ${w}</h3>
+      <label class="fld">Pairing — how well it paired (1–10)</label>
+      ${segHTML('pairing',w,r.pairing??null)}
+      <label class="fld">Overall — how good is it (1–10)</label>
+      ${segHTML('overall',w,r.overall??null)}
+      <label class="fld">Tasting notes</label>
+      <textarea id="notes${w}" placeholder="aromas, flavors, finish, how it paired…" onchange="noteChange(${w},this.value)">${esc(r.notes||'')}</textarea>
+      <label class="fld">Your guess — what is this wine?</label>
+      <input type="text" id="guess${w}" placeholder="grape / region / producer / vintage…" value="${esc(r.guess||'')}" onchange="guessChange(${w},this.value)">
+    </div>`;
+  }
+  app.innerHTML=`
+    ${navTabs('home')}
+    <div class="saveind" id="saveind">&nbsp;</div>
+    <h2>Score the wines</h2>
+    <p class="muted">Tap a number for each. Notes and guesses save automatically.</p>
+    ${cards}
+    <button class="btn gold" id="toRank">Review &amp; rank &rarr;</button>
+    <div class="foot">Taster ${n} · ${esc(tasterName(n))}</div>`;
+  $('toRank').onclick=()=>renderRankStep(n);
+}
+async function pick(wine,kind,val,btn){
+  btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+  await saveScore(window._taster,wine,{[kind]:val});
+  flashSaved();
+}
+let noteTimer={};
+function noteChange(w,v){ saveScore(window._taster,w,{notes:v}).then(flashSaved); }
+function guessChange(w,v){ saveScore(window._taster,w,{guess:v}).then(flashSaved); }
+function flashSaved(){const e=$('saveind');if(e){e.textContent='✓ saved';clearTimeout(e._t);e._t=setTimeout(()=>e.textContent=' ',1200);}}
+
+function renderRankStep(n){
+  const ms=myScores(n);
+  const order=suggestedOrder(ms);
+  let items='';
+  order.forEach((w,i)=>{
+    const r=ms.find(s=>s.wine===w)||{};
+    const wt=weighted(r.pairing,r.overall);
+    const sc=wt==null?'—':wt.toFixed(1);
+    items+=`<li data-wine="${w}"><span class="pos">${i+1}</span><span class="nm"><b>Wine ${w}</b> <span class="muted">your score ${sc}</span></span><span class="handle">&#9776;</span></li>`;
+  });
+  app.innerHTML=`
+    ${navTabs('home')}
+    <h2>Your ranking</h2>
+    <p class="muted">This is the order I suggest from your scores &amp; notes. <b>Drag the &#9776; handle</b> to reorder it however you like — best wine on top.</p>
+    <ol class="ranklist" id="ranklist">${items}</ol>
+    <button class="btn ghost" id="back">&larr; Back to scores</button>
+    <button class="btn gold" id="submit">Submit my ranking</button>
+    <div class="foot">Taster ${n} · ${esc(tasterName(n))}</div>`;
+  const list=$('ranklist');
+  Sortable.create(list,{handle:'.handle',animation:160,onEnd:renumber});
+  function renumber(){[...list.children].forEach((li,i)=>li.querySelector('.pos').textContent=i+1);}
+  $('back').onclick=()=>renderScoreStep(n);
+  $('submit').onclick=()=>{
+    const ord=[...list.children].map(li=>parseInt(li.dataset.wine,10));
+    confirmModal('Submit your ranking?',
+      'Once you submit, your scores and ranking are locked in and you won\'t be able to change them. Results appear when the host releases them.',
+      'Yes, submit',
+      async()=>{
+        await saveSubmission(n,{rank_order:ord,submitted:true});
+        toast('Submitted! Cheers 🍷');
+        renderTaster(n);
+      });
+  };
+}
+
+function renderWaiting(n){
+  const done=SUBS.filter(s=>s.submitted).length;
+  app.innerHTML=`
+    ${navTabs('home')}
+    <div class="card center">
+      <div class="big-ico">&#9203;</div>
+      <h2>You're locked in</h2>
+      <p class="muted">Thanks, ${esc(tasterName(n))} — your ranking is submitted.</p>
+      <div class="banner">${done} of ${NUM_TASTERS} tasters submitted</div>
+      <p class="muted">Results will appear here automatically the moment the host releases them.</p>
+    </div>`;
+}
+
+//// ----- HOST -----
+function renderHost(isRefresh){
+  // preserve scroll on refresh
+  const sy=window.scrollY;
+  const done=SUBS.filter(s=>s.submitted).length;
+  const gl=guessLeaderboard();
+  // guesses section
+  let guessSec='';
+  for(let w=1;w<=EVENT.num_wines;w++){
+    const rows=SCORES.filter(s=>s.wine===w && (s.guess&&s.guess.trim()));
+    let rh='';
+    if(!rows.length) rh=`<div class="muted" style="font-size:14px">No guesses yet.</div>`;
+    rows.forEach(s=>{
+      const gc=s.guess_correct;
+      rh+=`<div class="guessrow">
+        <span class="pill">${esc(tasterName(s.taster))}</span>
+        <span class="g">${esc(s.guess)}</span>
+        <button class="chk ${gc===true?'on-good':''}" onclick="setGuess(${s.taster},${w},true)">✓</button>
+        <button class="chk ${gc===false?'on-bad':''}" onclick="setGuess(${s.taster},${w},false)">✗</button>
+      </div>`;
+    });
+    const real=EVENT.wine_names?.[w];
+    guessSec+=`<div class="card"><h3><span class="winebadge">${w}</span> Wine ${w}</h3>
+      ${real?`<div class="note">Actual: ${esc(real)}</div>`:''}${rh}</div>`;
+  }
+  // live score matrix
+  let head='<tr><th>Taster</th>';
+  for(let w=1;w<=EVENT.num_wines;w++) head+=`<th>W${w}</th>`;
+  head+='<th>Done</th></tr>';
+  let body='';
+  for(let t=1;t<=NUM_TASTERS;t++){
+    const sub=SUBS.find(s=>s.taster===t);
+    body+=`<tr><td class="wn">${esc(tasterName(t))}</td>`;
+    for(let w=1;w<=EVENT.num_wines;w++){
+      const r=SCORES.find(s=>s.taster===t&&s.wine===w);
+      const wt=r?weighted(r.pairing,r.overall):null;
+      body+=`<td>${wt==null?'·':wt.toFixed(1)}</td>`;
+    }
+    body+=`<td>${sub&&sub.submitted?'✅':'…'}</td></tr>`;
+  }
+  // guess leaderboard
+  let glRows=Object.keys(gl).map(t=>({t:+t,c:gl[t]})).sort((a,b)=>b.c-a.c);
+  let glH = glRows.length? glRows.map((x,i)=>`<div class="guessrow"><span class="pill">#${i+1}</span><span class="g">${esc(tasterName(x.t))}</span><b>${x.c} correct</b></div>`).join('') : '<div class="muted" style="font-size:14px">No correct guesses marked yet.</div>';
+
+  app.innerHTML=`
+    ${navTabs('host', `<button onclick="location.hash='view=setup'">Setup</button><button onclick="location.hash='view=results'">Results</button>`)}
+    <h2>Host Control</h2>
+    <div class="banner"><b>${done} / ${NUM_TASTERS}</b> tasters submitted · ${EVENT.released?'<span style="color:var(--good)">RESULTS RELEASED</span>':'results hidden'}</div>
+    <div class="card center">
+      ${EVENT.released
+        ? `<p class="muted">Tasters can now see the results.</p><button class="btn ghost" id="hideBtn">Hide results again</button>`
+        : `<p class="muted">When everyone's in, reveal the results to all submitted tasters.</p><button class="btn gold" id="releaseBtn">🍷 Release Results</button>`}
+      <button class="btn" onclick="location.hash='view=results'">Preview results &rarr;</button>
+    </div>
+    <h3>Live scores <span class="muted">(weighted, auto-refresh)</span></h3>
+    <div class="card" style="overflow-x:auto"><table class="grid">${head}${body}</table></div>
+    <h3>Guesses — mark right / wrong</h3>
+    ${guessSec}
+    <h3>Guessing leaderboard</h3>
+    <div class="card">${glH}</div>
+    <div class="foot">Auto-refreshing every 5s</div>`;
+  const rb=$('releaseBtn'); if(rb) rb.onclick=()=>confirmModal('Release results to everyone?','All tasters who have submitted will immediately see the full results and winner.','Release now',async()=>{await setEvent({released:true});toast('Results released');await loadAll();renderHost();});
+  const hb=$('hideBtn'); if(hb) hb.onclick=async()=>{await setEvent({released:false});toast('Results hidden');await loadAll();renderHost();};
+  if(isRefresh) window.scrollTo(0,sy);
+}
+async function setGuess(t,w,val){
+  const r=SCORES.find(s=>s.taster===t&&s.wine===w);
+  const newVal=(r&&r.guess_correct===val)?null:val; // toggle off if same
+  await markGuess(t,w,newVal);
+  renderHost(true);
+}
+
+//// ----- RESULTS -----
+function renderResults(viewerTaster,isRefresh){
+  const sy=window.scrollY;
+  const isHost = hashParams().view==='results';
+  // gating: tasters only see after release
+  if(!EVENT.released && viewerTaster!=null){ renderWaiting(viewerTaster); return; }
+  if(!EVENT.released && !isHost){
+    app.innerHTML=`${navTabs('home')}<div class="card center"><div class="big-ico">&#128274;</div><h2>Results not released</h2><p class="muted">The host hasn't revealed the results yet. Hang tight!</p></div>`;
+    startPoll(async()=>{await loadAll();if(EVENT.released){stopPoll();renderResults(viewerTaster);}},6000);
+    return;
+  }
+  const {ranked,voters}=groupResults();
+  const gl=guessLeaderboard();
+  let rows='';
+  ranked.forEach((r,i)=>{
+    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`;
+    const real=EVENT.wine_names?.[r.wine];
+    rows+=`<div class="resultrow ${i===0?'win':''}">
+      <div class="rk">${medal}</div>
+      <div class="meta">
+        <div style="font-size:19px;color:var(--burg)"><b>Wine ${r.wine}</b>${real?` — ${esc(real)}`:''}</div>
+        <div class="muted">${r.borda} pts · avg overall ${r.avgOverall?r.avgOverall.toFixed(1):'—'} · avg pairing ${r.avgPair?r.avgPair.toFixed(1):'—'}</div>
+      </div>
+      <div class="score">${r.avgWeighted?r.avgWeighted.toFixed(1):'—'}</div>
+    </div>`;
+  });
+  let glRows=Object.keys(gl).map(t=>({t:+t,c:gl[t]})).sort((a,b)=>b.c-a.c);
+  let glH = glRows.length? glRows.map((x,i)=>`<div class="guessrow"><span class="pill">${i===0?'🏆':'#'+(i+1)}</span><span class="g">${esc(tasterName(x.t))}</span><b>${x.c} correct</b></div>`).join('') : '<div class="muted" style="font-size:14px">No correct guesses recorded.</div>';
+  const winner=ranked[0];
+  app.innerHTML=`
+    ${navTabs('home', isHost?`<button onclick="location.hash='view=host'">Host</button>`:'')}
+    <h2>Results</h2>
+    <div class="banner">Ranked by ${voters} taster ranking${voters===1?'':'s'} · weighted score = 60% overall + 40% pairing</div>
+    ${winner?`<div class="card center" style="border-color:var(--gold)"><div class="big-ico">🏆</div><h3 style="margin:0">Winner: Wine ${winner.wine}${EVENT.wine_names?.[winner.wine]?' — '+esc(EVENT.wine_names[winner.wine]):''}</h3></div>`:''}
+    ${rows}
+    <h3>Guessing champions</h3>
+    <div class="card">${glH}</div>
+    <div class="foot">6 Somms · Blind Tasting</div>`;
+  if(isRefresh) window.scrollTo(0,sy);
+}
+
+// expose handlers used in inline HTML
+window.pick=pick;window.noteChange=noteChange;window.guessChange=guessChange;
+window.copyVal=copyVal;window.setGuess=setGuess;
+
+//// ---------- BOOT ----------
+route();
+</script>
+</body>
+</html>
