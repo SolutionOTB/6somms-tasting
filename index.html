@@ -124,7 +124,7 @@ const W_PAIR = 0.4, W_OVERALL = 0.6;
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 //// ---------- STATE ----------
-let EVENT = {id:1,event_name:'Blind Wine Tasting',num_wines:6,released:false,wine_names:{}};
+let EVENT = {id:1,event_name:'Blind Wine Tasting',num_wines:6,released:false,wine_names:{},wine_nicknames:{}};
 let SCORES = [];        // wt_scores rows
 let SUBS = [];          // wt_submissions rows
 let pollTimer = null;
@@ -290,7 +290,7 @@ async function route(){
   await loadAll();
   $('hdrSub').textContent = EVENT.event_name || 'Six Sommeliers · Blind Tasting';
   if(p.view==='rules'){ $('hdrRole').textContent=''; renderRules('home'); return; }
-  if(p.view==='host'){ $('hdrRole').textContent='HOST CONTROL'; renderHost(); startPoll(async()=>{await loadAll();renderHost(true);},5000); return; }
+  if(p.view==='host'){ $('hdrRole').textContent='HOST CONTROL'; renderHost(); startPoll(async()=>{if(document.activeElement&&/INPUT|TEXTAREA/.test(document.activeElement.tagName))return; await loadAll();renderHost(true);},5000); return; }
   if(p.view==='setup'){ $('hdrRole').textContent='HOST SETUP'; renderSetup(); return; }
   if(p.view==='results'){ $('hdrRole').textContent=''; renderResults(null); startPoll(async()=>{await loadAll();renderResults(null,true);},6000); return; }
   if(p.t){ const n=parseInt(p.t,10); if(n>=1&&n<=NUM_TASTERS){renderTaster(n);return;} }
@@ -541,6 +541,13 @@ function renderHost(isRefresh){
   const sy=window.scrollY;
   const done=SUBS.filter(s=>s.submitted).length;
   const gl=guessLeaderboard();
+  // nickname inputs
+  let nickInputs='';
+  for(let w=1;w<=EVENT.num_wines;w++){
+    nickInputs+=`<div style="display:flex;gap:8px;align-items:center;margin:5px 0">
+      <span class="winebadge" style="min-width:34px;height:34px;font-size:18px">${w}</span>
+      <input type="text" id="nick${w}" value="${esc(EVENT.wine_nicknames?.[w]||'')}" placeholder="e.g. The Velvet Bomb" style="flex:1"></div>`;
+  }
   // guesses section
   let guessSec='';
   for(let w=1;w<=EVENT.num_wines;w++){
@@ -589,6 +596,18 @@ function renderHost(isRefresh){
         : `<p class="muted">When everyone's in, reveal the results to all submitted tasters.</p><button class="btn gold" id="releaseBtn">🍷 Release Results</button>`}
       <button class="btn" onclick="location.hash='view=results'">Preview results &rarr;</button>
     </div>
+    <h3>Contest settings</h3>
+    <div class="card">
+      <label class="fld">Number of wines in the contest</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="hNum" inputmode="numeric" value="${EVENT.num_wines}" style="flex:1">
+        <button class="btn" style="width:auto;margin-top:0" id="saveNum">Set</button>
+      </div>
+      <p class="muted" style="margin-top:6px">This sets how many wines each guest scores when they scan their card. The printed QR codes never change.</p>
+      <label class="fld">Wine nicknames <span style="text-transform:none">— shown next to each wine in the results</span></label>
+      ${nickInputs}
+      <button class="btn gold" id="saveNicks">Save nicknames</button>
+    </div>
     <h3>Live scores <span class="muted">(weighted, auto-refresh)</span></h3>
     <div class="card" style="overflow-x:auto"><table class="grid">${head}${body}</table></div>
     <h3>Guesses — mark right / wrong</h3>
@@ -604,6 +623,8 @@ function renderHost(isRefresh){
   const rb=$('releaseBtn'); if(rb) rb.onclick=()=>confirmModal('Release results to everyone?','All tasters who have submitted will immediately see the full results and winner.','Release now',async()=>{await setEvent({released:true});toast('Results released');await loadAll();renderHost();});
   const hb=$('hideBtn'); if(hb) hb.onclick=async()=>{await setEvent({released:false});toast('Results hidden');await loadAll();renderHost();};
   const rsb=$('resetBtn'); if(rsb) rsb.onclick=()=>confirmModal('Clear all results?','This permanently deletes every taster\'s scores, notes, guesses and submitted rankings, and hides the results. Guest names and links are kept. Use it to restart for a dry run or a new round.','Yes, clear everything',async()=>{await resetEvent();});
+  const snb=$('saveNum'); if(snb) snb.onclick=async()=>{let n=parseInt($('hNum').value,10);if(isNaN(n)||n<1)n=1;if(n>30)n=30;await setEvent({num_wines:n});toast('Now '+n+' wines');await loadAll();renderHost();};
+  const sk=$('saveNicks'); if(sk) sk.onclick=async()=>{const nn={};for(let w=1;w<=EVENT.num_wines;w++){const v=$('nick'+w);if(v&&v.value.trim())nn[w]=v.value.trim();}await setEvent({wine_nicknames:nn});toast('Nicknames saved');};
   if(isRefresh) window.scrollTo(0,sy);
 }
 async function setGuess(t,w,val){
@@ -629,14 +650,15 @@ function renderResults(viewerTaster,isRefresh){
   let rows='';
   ranked.forEach((r,i)=>{
     const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`;
+    const nick=EVENT.wine_nicknames?.[r.wine];
     const real=EVENT.wine_names?.[r.wine];
     rows+=`<div class="resultrow ${i===0?'win':''}">
       <div class="rk">${medal}</div>
       <div class="meta">
-        <div style="font-size:19px;color:var(--burg)"><b>Wine ${r.wine}</b>${real?` — ${esc(real)}`:''}</div>
-        <div class="muted">${r.borda} pts · avg overall ${r.avgOverall?r.avgOverall.toFixed(1):'—'} · avg pairing ${r.avgPair?r.avgPair.toFixed(1):'—'}</div>
+        <div style="font-size:19px;color:var(--burg)"><b>Wine ${r.wine}</b>${nick?` — &ldquo;${esc(nick)}&rdquo;`:''}${real?` <span class="muted">(${esc(real)})</span>`:''}</div>
+        <div class="muted">avg overall ${r.avgOverall?r.avgOverall.toFixed(1):'—'} · avg pairing ${r.avgPair?r.avgPair.toFixed(1):'—'} · weighted ${r.avgWeighted?r.avgWeighted.toFixed(1):'—'}</div>
       </div>
-      <div class="score">${r.avgWeighted?r.avgWeighted.toFixed(1):'—'}</div>
+      <div class="score" style="text-align:center;min-width:54px">${r.borda}<div style="font-size:10px;letter-spacing:1px;color:var(--muted)">POINTS</div></div>
     </div>`;
   });
   let glRows=Object.keys(gl).map(t=>({t:+t,c:gl[t]})).sort((a,b)=>b.c-a.c);
@@ -645,8 +667,8 @@ function renderResults(viewerTaster,isRefresh){
   app.innerHTML=`
     ${navTabs('home', isHost?`<button onclick="location.hash='view=host'">Host</button>`:'')}
     <h2>Results</h2>
-    <div class="banner">Ranked by ${voters} taster ranking${voters===1?'':'s'} · weighted score = 60% overall + 40% pairing</div>
-    ${winner?`<div class="card center" style="border-color:var(--gold)"><div class="big-ico">🏆</div><h3 style="margin:0">Winner: Wine ${winner.wine}${EVENT.wine_names?.[winner.wine]?' — '+esc(EVENT.wine_names[winner.wine]):''}</h3></div>`:''}
+    <div class="banner">Points: each taster's 1st pick earns ${EVENT.num_wines}, down to 1 for last place — summed across all tasters. ${voters} ranking${voters===1?'':'s'} counted.</div>
+    ${winner?`<div class="card center" style="border-color:var(--gold)"><div class="big-ico">🏆</div><h3 style="margin:0">Winner: Wine ${winner.wine}${EVENT.wine_nicknames?.[winner.wine]?' — &ldquo;'+esc(EVENT.wine_nicknames[winner.wine])+'&rdquo;':''}</h3>${EVENT.wine_names?.[winner.wine]?`<div class="muted">${esc(EVENT.wine_names[winner.wine])}</div>`:''}<div class="muted">${winner.borda} points</div></div>`:''}
     ${rows}
     <h3>Guessing champions</h3>
     <div class="card">${glH}</div>
