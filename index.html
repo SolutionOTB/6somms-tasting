@@ -266,6 +266,14 @@ async function setEvent(patch){
   if(error){console.error(error);toast('Save failed');return;}
   EVENT=data;
 }
+async function resetEvent(){
+  await sb.from('wt_scores').delete().gte('taster',0);
+  await sb.from('wt_submissions').update({submitted:false,rank_order:[],updated_at:new Date().toISOString()}).gte('taster',0);
+  await setEvent({released:false});
+  await loadAll();
+  toast('Cleared — ready for a fresh round 🍷');
+  renderHost();
+}
 async function markGuess(taster,wine,val){
   const {data,error}=await sb.from('wt_scores').update({guess_correct:val}).eq('taster',taster).eq('wine',wine).select().maybeSingle();
   if(error){toast('Update failed');return;}
@@ -587,9 +595,15 @@ function renderHost(isRefresh){
     ${guessSec}
     <h3>Guessing leaderboard</h3>
     <div class="card">${glH}</div>
+    <h3>Dry run &amp; reset</h3>
+    <div class="card center">
+      <p class="muted">Wipe everyone's scores, notes, guesses and rankings, and re-hide results — for a practice run or a brand-new round. Guest names and their QR links stay the same.</p>
+      <button class="btn ghost" id="resetBtn" style="color:var(--bad);border-color:var(--bad)">&#8635; Clear all results &amp; restart</button>
+    </div>
     <div class="foot">Auto-refreshing every 5s</div>`;
   const rb=$('releaseBtn'); if(rb) rb.onclick=()=>confirmModal('Release results to everyone?','All tasters who have submitted will immediately see the full results and winner.','Release now',async()=>{await setEvent({released:true});toast('Results released');await loadAll();renderHost();});
   const hb=$('hideBtn'); if(hb) hb.onclick=async()=>{await setEvent({released:false});toast('Results hidden');await loadAll();renderHost();};
+  const rsb=$('resetBtn'); if(rsb) rsb.onclick=()=>confirmModal('Clear all results?','This permanently deletes every taster\'s scores, notes, guesses and submitted rankings, and hides the results. Guest names and links are kept. Use it to restart for a dry run or a new round.','Yes, clear everything',async()=>{await resetEvent();});
   if(isRefresh) window.scrollTo(0,sy);
 }
 async function setGuess(t,w,val){
