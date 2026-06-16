@@ -124,7 +124,7 @@ const W_PAIR = 0.4, W_OVERALL = 0.6;
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 //// ---------- STATE ----------
-let EVENT = {id:1,event_name:'Blind Wine Tasting',num_wines:6,released:false,wine_names:{},wine_nicknames:{}};
+let EVENT = {id:1,event_name:'Blind Wine Tasting',num_wines:6,released:false,wine_names:{},wine_nicknames:{},wine_start:1};
 let SCORES = [];        // wt_scores rows
 let SUBS = [];          // wt_submissions rows
 let pollTimer = null;
@@ -135,6 +135,7 @@ const app = $('app');
 const esc = (s)=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1800);}
 function baseUrl(){return location.origin+location.pathname;}
+function wineList(){const s=parseInt(EVENT.wine_start,10)||1;const a=[];for(let i=0;i<EVENT.num_wines;i++)a.push(s+i);return a;}
 function hashParams(){const h=location.hash.replace(/^#/,'');const p={};h.split('&').forEach(kv=>{const[a,b]=kv.split('=');if(a)p[a]=decodeURIComponent(b||'');});return p;}
 
 function confirmModal(title,body,okLabel,onOk){
@@ -168,12 +169,12 @@ function weighted(p,o){
 // suggested order for one taster: array of wine numbers best->worst
 function suggestedOrder(tasterScores){
   const wines=[];
-  for(let w=1;w<=EVENT.num_wines;w++){
+  wineList().forEach(w=>{
     const r=tasterScores.find(s=>s.wine===w);
     const base=r?weighted(r.pairing,r.overall):null;
     const nud=r?sentimentNudge(r.notes):0;
     wines.push({wine:w, rated:base!=null, combined:(base==null?-1:base+nud)});
-  }
+  });
   wines.sort((a,b)=> (b.rated-a.rated) || (b.combined-a.combined) || (a.wine-b.wine));
   return wines.map(x=>x.wine);
 }
@@ -181,7 +182,7 @@ function suggestedOrder(tasterScores){
 function groupResults(){
   const N=EVENT.num_wines;
   const res={};
-  for(let w=1;w<=N;w++) res[w]={wine:w,borda:0,ranksum:0,rankcount:0,wsum:0,wcount:0,psum:0,pcount:0,osum:0,ocount:0};
+  wineList().forEach(w=>{res[w]={wine:w,borda:0,ranksum:0,rankcount:0,wsum:0,wcount:0,psum:0,pcount:0,osum:0,ocount:0};});
   // weighted averages from all scores
   SCORES.forEach(s=>{
     const r=res[s.wine]; if(!r) return;
@@ -350,10 +351,11 @@ function renderRules(back){
 //// ----- SETUP -----
 function renderSetup(){
   let nameInputs='';
-  for(let i=1;i<=EVENT.num_wines;i++){
+  wineList().forEach(i=>{
     nameInputs+=`<label class="fld">Wine ${i} (revealed at the end)</label>
       <input type="text" id="wn${i}" value="${esc(EVENT.wine_names?.[i]||'')}" placeholder="e.g. 2019 Saxum James Berry">`;
-  }
+  });
+  const _wl=wineList(), _rng=_wl.length?`bags ${_wl[0]}–${_wl[_wl.length-1]}`:'';
   app.innerHTML=`
     ${navTabs('setup')}
     <h2>Event Setup</h2>
@@ -362,6 +364,9 @@ function renderSetup(){
       <input type="text" id="evName" value="${esc(EVENT.event_name)}">
       <label class="fld">Number of wines</label>
       <input type="text" id="evNum" inputmode="numeric" value="${EVENT.num_wines}">
+      <label class="fld">Starting bag number</label>
+      <input type="text" id="evStart" inputmode="numeric" value="${EVENT.wine_start||1}">
+      <p class="muted" style="margin-top:6px">Wines will be labeled <b>${_rng}</b> to match your bags. QR codes never change.</p>
       <button class="btn gold" id="saveBasics">Save & refresh</button>
     </div>
     <div class="card">
@@ -379,12 +384,13 @@ function renderSetup(){
   $('saveBasics').onclick=async()=>{
     const nm=$('evName').value.trim()||'Blind Wine Tasting';
     let n=parseInt($('evNum').value,10); if(isNaN(n)||n<1)n=1; if(n>30)n=30;
-    await setEvent({event_name:nm,num_wines:n});
+    let st=parseInt($('evStart').value,10); if(isNaN(st)||st<1)st=1; if(st>500)st=500;
+    await setEvent({event_name:nm,num_wines:n,wine_start:st});
     toast('Saved'); renderSetup();
   };
   $('saveNames').onclick=async()=>{
     const names={};
-    for(let i=1;i<=EVENT.num_wines;i++){const v=$('wn'+i).value.trim();if(v)names[i]=v;}
+    wineList().forEach(i=>{const v=$('wn'+i).value.trim();if(v)names[i]=v;});
     await setEvent({wine_names:names}); toast('Wine names saved');
   };
 }
@@ -452,7 +458,7 @@ function renderScoreStep(n){
   window._taster=n;
   const ms=myScores(n);
   let cards='';
-  for(let w=1;w<=EVENT.num_wines;w++){
+  wineList().forEach(w=>{
     const r=ms.find(s=>s.wine===w)||{};
     cards+=`<div class="card winecard">
       <h3><span class="winebadge">${w}</span> Wine ${w}</h3>
@@ -465,7 +471,7 @@ function renderScoreStep(n){
       <label class="fld">Your guess — what is this wine?</label>
       <input type="text" id="guess${w}" placeholder="grape / region / producer / vintage…" value="${esc(r.guess||'')}" onchange="guessChange(${w},this.value)">
     </div>`;
-  }
+  });
   app.innerHTML=`
     ${navTabs('home')}
     <div class="saveind" id="saveind">&nbsp;</div>
@@ -543,14 +549,15 @@ function renderHost(isRefresh){
   const gl=guessLeaderboard();
   // nickname inputs
   let nickInputs='';
-  for(let w=1;w<=EVENT.num_wines;w++){
+  wineList().forEach(w=>{
     nickInputs+=`<div style="display:flex;gap:8px;align-items:center;margin:5px 0">
       <span class="winebadge" style="min-width:34px;height:34px;font-size:18px">${w}</span>
       <input type="text" id="nick${w}" value="${esc(EVENT.wine_nicknames?.[w]||'')}" placeholder="e.g. The Velvet Bomb" style="flex:1"></div>`;
-  }
+  });
+  const _wl=wineList(), _rng=_wl.length?`bags ${_wl[0]}–${_wl[_wl.length-1]}`:'';
   // guesses section
   let guessSec='';
-  for(let w=1;w<=EVENT.num_wines;w++){
+  wineList().forEach(w=>{
     const rows=SCORES.filter(s=>s.wine===w && (s.guess&&s.guess.trim()));
     let rh='';
     if(!rows.length) rh=`<div class="muted" style="font-size:14px">No guesses yet.</div>`;
@@ -566,20 +573,20 @@ function renderHost(isRefresh){
     const real=EVENT.wine_names?.[w];
     guessSec+=`<div class="card"><h3><span class="winebadge">${w}</span> Wine ${w}</h3>
       ${real?`<div class="note">Actual: ${esc(real)}</div>`:''}${rh}</div>`;
-  }
+  });
   // live score matrix
   let head='<tr><th>Taster</th>';
-  for(let w=1;w<=EVENT.num_wines;w++) head+=`<th>W${w}</th>`;
+  wineList().forEach(w=>{head+=`<th>W${w}</th>`;});
   head+='<th>Done</th></tr>';
   let body='';
   for(let t=1;t<=NUM_TASTERS;t++){
     const sub=SUBS.find(s=>s.taster===t);
     body+=`<tr><td class="wn">${esc(tasterName(t))}</td>`;
-    for(let w=1;w<=EVENT.num_wines;w++){
+    wineList().forEach(w=>{
       const r=SCORES.find(s=>s.taster===t&&s.wine===w);
       const wt=r?weighted(r.pairing,r.overall):null;
       body+=`<td>${wt==null?'·':wt.toFixed(1)}</td>`;
-    }
+    });
     body+=`<td>${sub&&sub.submitted?'✅':'…'}</td></tr>`;
   }
   // guess leaderboard
@@ -599,11 +606,13 @@ function renderHost(isRefresh){
     <h3>Contest settings</h3>
     <div class="card">
       <label class="fld">Number of wines in the contest</label>
+      <input type="text" id="hNum" inputmode="numeric" value="${EVENT.num_wines}">
+      <label class="fld">Starting bag number</label>
       <div style="display:flex;gap:8px">
-        <input type="text" id="hNum" inputmode="numeric" value="${EVENT.num_wines}" style="flex:1">
+        <input type="text" id="hStart" inputmode="numeric" value="${EVENT.wine_start||1}" style="flex:1">
         <button class="btn" style="width:auto;margin-top:0" id="saveNum">Set</button>
       </div>
-      <p class="muted" style="margin-top:6px">This sets how many wines each guest scores when they scan their card. The printed QR codes never change.</p>
+      <p class="muted" style="margin-top:6px">Guests will score wines labeled <b>${_rng}</b> to match your bags. This controls what shows when they scan — the printed QR codes never change.</p>
       <label class="fld">Wine nicknames <span style="text-transform:none">— shown next to each wine in the results</span></label>
       ${nickInputs}
       <button class="btn gold" id="saveNicks">Save nicknames</button>
@@ -623,8 +632,8 @@ function renderHost(isRefresh){
   const rb=$('releaseBtn'); if(rb) rb.onclick=()=>confirmModal('Release results to everyone?','All tasters who have submitted will immediately see the full results and winner.','Release now',async()=>{await setEvent({released:true});toast('Results released');await loadAll();renderHost();});
   const hb=$('hideBtn'); if(hb) hb.onclick=async()=>{await setEvent({released:false});toast('Results hidden');await loadAll();renderHost();};
   const rsb=$('resetBtn'); if(rsb) rsb.onclick=()=>confirmModal('Clear all results?','This permanently deletes every taster\'s scores, notes, guesses and submitted rankings, and hides the results. Guest names and links are kept. Use it to restart for a dry run or a new round.','Yes, clear everything',async()=>{await resetEvent();});
-  const snb=$('saveNum'); if(snb) snb.onclick=async()=>{let n=parseInt($('hNum').value,10);if(isNaN(n)||n<1)n=1;if(n>30)n=30;await setEvent({num_wines:n});toast('Now '+n+' wines');await loadAll();renderHost();};
-  const sk=$('saveNicks'); if(sk) sk.onclick=async()=>{const nn={};for(let w=1;w<=EVENT.num_wines;w++){const v=$('nick'+w);if(v&&v.value.trim())nn[w]=v.value.trim();}await setEvent({wine_nicknames:nn});toast('Nicknames saved');};
+  const snb=$('saveNum'); if(snb) snb.onclick=async()=>{let n=parseInt($('hNum').value,10);if(isNaN(n)||n<1)n=1;if(n>30)n=30;let st=parseInt($('hStart').value,10);if(isNaN(st)||st<1)st=1;if(st>500)st=500;await setEvent({num_wines:n,wine_start:st});const wl=[];for(let i=0;i<n;i++)wl.push(st+i);toast('Bags '+wl[0]+'–'+wl[wl.length-1]);await loadAll();renderHost();};
+  const sk=$('saveNicks'); if(sk) sk.onclick=async()=>{const nn={};wineList().forEach(w=>{const v=$('nick'+w);if(v&&v.value.trim())nn[w]=v.value.trim();});await setEvent({wine_nicknames:nn});toast('Nicknames saved');};
   if(isRefresh) window.scrollTo(0,sy);
 }
 async function setGuess(t,w,val){
